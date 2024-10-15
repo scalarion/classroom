@@ -1,0 +1,269 @@
+#!/usr/bin/python3
+
+import os
+import subprocess
+import shlex
+
+import yaml
+import argparse
+from dataclasses import dataclass
+from timeit import default_timer as timer
+
+
+# constants
+CLASSROOM_CONFIG_FILE = ".classroom.yaml"
+
+
+# dataclass to store student information
+@dataclass
+class Student:
+    name: str
+    email: str
+    github: str
+    skip: bool
+
+
+# dataclass to store classroom information
+@dataclass
+class Classroom:
+    organization: str
+    classroom: str
+    roster: dict
+
+
+# pretty print Student and Classroom objects
+def student_representer(dumper, data):
+    return dumper.represent_dict(
+        {
+            "name": data.name,
+            "email": data.email,
+            "github": data.github,
+            "skip": data.skip,
+        }
+    )
+
+
+def classroom_representer(dumper, data):
+    return dumper.represent_dict(
+        {
+            "organization": data.organization,
+            "classroom": data.classroom,
+            "roster": data.roster,
+        }
+    )
+
+
+yaml.add_representer(Student, student_representer)
+yaml.add_representer(Classroom, classroom_representer)
+
+
+# run shell command
+def run(command):
+    process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE)
+    while True:
+        output = process.stdout.readline().rstrip().decode("utf-8")
+        if output == "" and process.poll() is not None:
+            break
+        if output:
+            print(output.strip())
+    rc = process.poll()
+    return rc == 0
+
+
+# read classroom config file
+def read_classroom():
+    # read the file
+    try:
+        with open(CLASSROOM_CONFIG_FILE, "r") as file:
+            config = yaml.safe_load(file)
+    except FileNotFoundError as e:
+        print(
+            CLASSROOM_CONFIG_FILE
+            + " not found in current directory - do you operate in a classroom folder?"
+        )
+        print()
+        return None
+
+    # deserialize students
+    roster = {
+        student: Student(
+            name=data["name"],
+            email=data["email"],
+            github=data["github"],
+            skip=data["skip"],
+        )
+        for student, data in config["roster"].items()
+    }
+
+    # create classroom object
+    return Classroom(
+        organization=config["organization"],
+        classroom=config["classroom"],
+        roster=roster,
+    )
+
+
+# init command
+def init():
+    if os.path.isfile(CLASSROOM_CONFIG_FILE):
+        print()
+        print(
+            yaml.dump(
+                read_classroom(), indent=4, default_flow_style=False, sort_keys=False
+            )
+        )
+        print()
+        print(CLASSROOM_CONFIG_FILE + " already exists")
+        print()
+    else:
+        with open(CLASSROOM_CONFIG_FILE, "w") as file:
+            file.write(
+                yaml.dump(
+                    {
+                        "organization": "organization",
+                        "classroom": "classroom",
+                        "roster": {
+                            "student": {
+                                "name": "Student Name",
+                                "email": "student@example.com",
+                                "github": "student_github",
+                                "skip": False,
+                            }
+                        },
+                    }
+                )
+            )
+        print()
+        print(CLASSROOM_CONFIG_FILE + " created")
+
+
+# clone command
+def clone(assignment):
+    start = timer()
+
+    classroom = read_classroom()
+    if classroom is None:
+        return
+
+    if not run("rm -rf " + assignment):
+        return
+
+    r, n = 0, 0
+    students = classroom.roster
+    for student, data in students.items():
+        n += 1
+        if not data.skip:
+            r += 1
+            print()
+            print(">>>>>>> " + data.name)
+            url = (
+                "https://github.com/"
+                + classroom.organization
+                + "/"
+                + assignment
+                + "-"
+                + data.github
+            )
+            dest = assignment + "/" + student
+            if not run("git clone " + url + " " + dest):
+                return
+        else:
+            print()
+            print(">>>>>>> " + data.name)
+            print("!!!!!!! skipped !!!!!!!")
+
+    print()
+    print(
+        "cloned {} out of {} student repositiories in {}s".format(r, n, timer() - start)
+    )
+    print()
+
+
+# pull command
+def pull(assignment):
+    start = timer()
+
+    classroom = read_classroom()
+    if classroom is None:
+        return
+
+    dir = os.getcwd()
+    try:
+        r, n = 0, 0
+        students = classroom.roster
+        for student, data in students.items():
+            n += 1
+            student_dir = os.path.join(dir, assignment, student)
+            if os.path.isdir(os.path.join(student_dir, ".git")):
+                r += 1
+                print()
+                print(">>>>>>> " + data.name)
+                os.chdir(student_dir)
+                if not run("git pull"):
+                    return
+            else:
+                print()
+                print(">>>>>>> " + data.name)
+                print("!!!!!!! skipped !!!!!!!")
+
+        print()
+        print(
+            "pulled {} out of {} student repositiories in {}s".format(
+                r, n, timer() - start
+            )
+        )
+        print()
+    finally:
+        os.chdir(dir)
+
+
+# sync command
+def sync(classroom, assignment):
+    print("sync")
+
+
+# create parser
+parser = argparse.ArgumentParser(description="Github Classroom Management CLI")
+subparsers = parser.add_subparsers(dest="command", help="commands")
+
+# init subcommand
+parser_init = subparsers.add_parser(
+    "init", help="create an empty " + CLASSROOM_CONFIG_FILE
+)
+
+# clone subcommand
+parser_clone = subparsers.add_parser(
+    "clone", help="clone student repositories of the assignment"
+)
+parser_clone.add_argument("assignment", type=str, help=" ... the assignment to clone")
+
+# pull subcommand
+parser_clone = subparsers.add_parser(
+    "pull", help="pull student repositories of the assignment"
+)
+parser_clone.add_argument("assignment", type=str, help=" ... the assignment to pull")
+
+# sync subcommand
+parser_sync = subparsers.add_parser(
+    "sync", help="sync student repositories with the starter code"
+)
+parser_sync.add_argument("assignment", type=str, help=" ... the assignment to sync")
+
+
+# # debug command
+# pull("observer-part-3")
+
+# parse commandline
+args = parser.parse_args()
+
+# handle commands
+if args.command == "init":
+    init()
+elif args.command == "clone":
+    clone(args.assignment)
+elif args.command == "pull":
+    pull(args.assignment)
+elif args.command == "sync":
+    sync(args.assignment)
+else:
+    parser.print_help()
