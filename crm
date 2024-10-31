@@ -194,7 +194,7 @@ def pull(assignment):
         for student, data in students.items():
             n += 1
             student_dir = os.path.join(dir, assignment, student)
-            if os.path.isdir(os.path.join(student_dir, ".git")):
+            if not data.skip and os.path.isdir(os.path.join(student_dir, ".git")):
                 r += 1
                 print()
                 print(">>>>>>> " + data.name)
@@ -218,6 +218,13 @@ def pull(assignment):
 
 
 # sync command
+#
+# Sync remote fork from its parent
+# gh repo sync owner/cli-fork
+# gh repo sync HTLD-2026-cWI-SWP-G2-STH/observer-part-3-ArisBaur -b main
+#
+# Sync remote repository from another remote repository
+# gh repo sync owner/repo --source owner2/repo2
 def sync(classroom, assignment):
     print("sync")
 
