@@ -153,7 +153,6 @@ def clone(assignment):
     for student, data in students.items():
         n += 1
         if not data.skip:
-            r += 1
             print()
             print(">>>>>>> " + data.name)
             url = (
@@ -166,7 +165,9 @@ def clone(assignment):
             )
             dest = assignment + "/" + student
             if not run("git clone " + url + " " + dest):
-                return
+                print("!!!!!!! skipped !!!!!!!")
+                continue
+            r += 1
         else:
             print()
             print(">>>>>>> " + data.name)
@@ -195,12 +196,13 @@ def pull(assignment):
             n += 1
             student_dir = os.path.join(dir, assignment, student)
             if not data.skip and os.path.isdir(os.path.join(student_dir, ".git")):
-                r += 1
                 print()
                 print(">>>>>>> " + data.name)
                 os.chdir(student_dir)
                 if not run("git pull"):
-                    return
+                    print("!!!!!!! skipped !!!!!!!")
+                    continue
+                r += 1
             else:
                 print()
                 print(">>>>>>> " + data.name)
